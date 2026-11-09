@@ -6,12 +6,12 @@ observations from a fresh run and instruction-by-instruction GDB inspection.
 
 | Source | Program README | Mode | Maximum additional stack use |
 | --- | --- | --- | --- |
-| [01.asm](01.asm) | [Push and pop into different registers](docs/01/README.md) | 64-bit | 16 bytes |
-| [02.asm](02.asm) | [A function with two local variables](docs/02/README.md) | 64-bit | 32 bytes |
-| [03.asm](03.asm) | [The implicit stack operations of call and ret](docs/03/README.md) | 64-bit | 8 bytes |
-| [04.asm](04.asm) | [A function with two local variables](docs/04/README.md) | 32-bit | 16 bytes |
-| [05.asm](05.asm) | [Saving and restoring 64-bit registers](docs/05/README.md) | 64-bit | 16 bytes |
-| [06.asm](06.asm) | [Saving and restoring 32-bit registers](docs/06/README.md) | 32-bit | 8 bytes |
+| [01.asm](01.asm) | [Push and pop into different registers](01_README.md) | 64-bit | 16 bytes |
+| [02.asm](02.asm) | [A function with two local variables](02_README.md) | 64-bit | 32 bytes |
+| [03.asm](03.asm) | [The implicit stack operations of call and ret](03_README.md) | 64-bit | 8 bytes |
+| [04.asm](04.asm) | [A function with two local variables](04_README.md) | 32-bit | 16 bytes |
+| [05.asm](05.asm) | [Saving and restoring 64-bit registers](05_README.md) | 64-bit | 16 bytes |
+| [06.asm](06.asm) | [Saving and restoring 32-bit registers](06_README.md) | 32-bit | 8 bytes |
 
 ## Reading the traces
 

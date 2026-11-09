@@ -1,6 +1,6 @@
 # 06.asm: saving and restoring 32-bit registers
 
-[Source: 06.asm](../../06.asm)
+[Source: 06.asm](06.asm)
 
 This is the 32-bit counterpart of `05.asm`. It saves EAX and EBX on the stack,
 then restores EBX followed by EAX. The stack operations use 4-byte entries

@@ -1,6 +1,6 @@
 # 03.asm: the stack behind call and ret
 
-[Source: 03.asm](../../03.asm)
+[Source: 03.asm](03.asm)
 
 This 64-bit program passes 10 to `calculate` in RAX. The function adds 5 and
 returns 15 in the same register. Although there are no explicit `push` or

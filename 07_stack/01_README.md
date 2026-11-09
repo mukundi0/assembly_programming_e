@@ -1,6 +1,6 @@
 # 01.asm: pushing and popping into different registers
 
-[Source: 01.asm](../../01.asm)
+[Source: 01.asm](01.asm)
 
 This 64-bit program pushes 100 and 200, then pops them into different
 registers. It demonstrates last in, first out: the last value pushed is the

@@ -1,6 +1,6 @@
 # 05.asm: saving and restoring 64-bit registers
 
-[Source: 05.asm](../../05.asm)
+[Source: 05.asm](05.asm)
 
 This program saves RAX and RBX on the stack and restores them in reverse
 order. It also shows that the stack entry size follows the register operand

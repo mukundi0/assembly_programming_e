@@ -1,6 +1,6 @@
 # 02.asm: a 64-bit function stack frame
 
-[Source: 02.asm](../../02.asm)
+[Source: 02.asm](02.asm)
 
 This program calls `work`, creates a stack frame, stores two 8-byte local
 variables, loads them into registers, and removes the frame before returning.

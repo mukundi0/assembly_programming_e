@@ -1,6 +1,6 @@
 # 04.asm: a 32-bit function stack frame
 
-[Source: 04.asm](../../04.asm)
+[Source: 04.asm](04.asm)
 
 This program is the 32-bit counterpart of `02.asm`. It calls `work`, saves EBP,
 reserves two 4-byte local variables, and restores the stack before returning.
