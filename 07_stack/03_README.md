@@ -1,75 +1,74 @@
-# 03.asm: the stack behind call and ret
+# 03.asm - How call and ret use the stack
 
-[Source: 03.asm](03.asm)
+[Source code](03.asm)
 
-This 64-bit program passes 10 to `calculate` in RAX. The function adds 5 and
-returns 15 in the same register. Although there are no explicit `push` or
-`pop` instructions, `call` and `ret` still use the stack.
+This example shows that a program can use the stack even when there is no
+`push` or `pop` written in the source. Here, the stack is used by `call`
+and `ret` to remember where execution should continue.
 
-## Execution and stack changes
+## How the program runs
 
-Let S be `RSP` at entry to `_start`. Linux has already prepared the process
-stack with arguments and other startup information. There is no caller return
-address for `_start` itself.
+I use S for RSP when `_start` begins. Linux has already prepared the startup
+stack. Since this is a 64-bit program, a return address takes 8 bytes.
 
-| Instruction or stage | RSP after execution | Effect |
-| --- | --- | --- |
-| Enter `_start` | S | Initial process stack. |
-| `mov rax, 10` | S | Put the input in RAX; no stack change. |
-| `call calculate` | S - 8 | Push the address of `after_call` and enter calculate. |
-| `add rax, 5` | S - 8 | Change RAX from 10 to 15; the return address stays on top. |
-| `ret` | S | Read the saved address into RIP and increase RSP by 8. |
-| `after_call: nop` | S | Execution resumes here with RAX = 15. |
-| `mov rax, 60` | S | Replace the result with the Linux exit system-call number. |
-| `xor rdi, rdi` | S | Set exit status to 0. |
-| `syscall` | S immediately before exit | End the process. |
+First, `mov rax, 10` puts 10 into RAX. RSP does not change.
+Then `call calculate` subtracts 8 from RSP and saves the address of
+`after_call` at the new top. Execution jumps to `calculate` with RSP = S - 8.
 
-While inside `calculate`, the stack contains:
+Inside `calculate`, `add rax, 5` changes RAX from 10 to 15. It does not
+change RSP or the saved return address. There are no local variables or
+saved frame pointer in this function.
 
 ~~~text
-Address    Contents
+Address    Value while calculate is running
 S - 8      Address of after_call  <- RSP
-S          Initial process data
+S          Startup information
 ~~~
 
-`call` saves the address immediately after itself, rather than the address of
-`calculate`. This gives `ret` the location where the caller should continue.
-The return address occupies 8 bytes, so maximum additional stack use is
-8 bytes.
+Next, `ret` reads the saved address into RIP, which holds the next instruction
+address, and adds 8 to RSP. Execution continues at `after_call` with RSP back
+at S and RAX still holding 15. The `nop` there changes nothing.
 
-The value 10 is not pushed as an argument, and the result 15 is not popped
-from the stack. Both travel in RAX. `calculate` creates no RBP frame and
-reserves no local variables because this small function only needs a register.
-`add` changes RAX and arithmetic flags without moving RSP.
+The next instruction, `mov rax, 60`, replaces 15 with the Linux exit system-call
+number. `xor rdi, rdi` sets the exit status to 0, and `syscall` ends the program.
+`_start` does not use `ret` to exit because it has no caller return address.
 
-After `ret`, execution resumes at `after_call` rather than falling through
-into the function again. The caller exits through a system call. It does not
-use a second `ret` at `_start`, where no caller return address exists.
-The result must be inspected at `after_call`, before `mov rax, 60` replaces it.
+| Point in the program | RSP |
+| --- | --- |
+| Before `call calculate` | S |
+| Inside `calculate` | S - 8 |
+| After `ret` | S |
+| Before exit | S |
 
-## Observations from running
+## What I observed
 
-The fresh ELF64 build printed nothing to stdout or stderr and exited with
-status 0. In GDB, RSP decreased by 8 upon entering `calculate`, stayed there
-during `add`, and returned to S after `ret`. Execution resumed at
-`after_call`, address `0x40100a` in this build, with `RAX = 15` (`0xf`).
-This confirms that `call`/`ret` manage control flow on the stack while the
-calculation's data stays in a register. The exit status was 0, not 15.
+The program printed nothing and exited with status 0. In GDB, RSP went down
+by 8 after the call and came back up by 8 after `ret`. At `after_call`,
+RAX was 15 (`0xf`). The return target in this build was `0x40100a`.
 
-## Build and inspect
+The most stack space used below S was 8 bytes, all for the return address.
+The input 10 and result 15 stayed in RAX; they were not pushed or popped.
+I checked the result before `mov rax, 60` because that instruction overwrites
+it. The calculation result is 15, but the program's exit status is 0.
 
-From the repository root:
+## How I ran the program
+
+From the `07_stack` folder, I assembled, linked, and ran the program with:
 
 ~~~sh
-stack_build=$(mktemp -d)
-nasm -f elf64 -g -F dwarf 07_stack/03.asm -o "$stack_build/03.o"
-ld -m elf_x86_64 "$stack_build/03.o" -o "$stack_build/03"
-"$stack_build/03"
+nasm -f elf64 03.asm -o 03.o
+ld 03.o -o 03
+./03
 echo $?  # 0
-gdb -q "$stack_build/03"
 ~~~
 
-Use `break _start`, `run`, and `set $initial_sp = $rsp`, then step with `si`.
-Inside `calculate`, use `x/gx $rsp` and `p/x &after_call` to compare the saved
-address with the return target. After `ret`, use `info registers rip rsp rax`
-and `p/d (long)$rsp - (long)$initial_sp`; the offset should be 0.
+To inspect the stack, I opened the executable in GDB:
+
+~~~sh
+gdb -q 03
+~~~
+
+In GDB, I used `break _start`, `run`, and `si` to enter `calculate`.
+`x/gx $rsp` shows the saved return address, and `p/x &after_call` shows
+where it should return. At `after_call`, `info registers rsp rax` shows
+the restored stack pointer and the result.

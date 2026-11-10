@@ -1,55 +1,54 @@
-# Stack programs
+# My notes on the stack programs
 
-Each source file has its own README covering execution from Linux process entry
-to process exit, with stack layouts, pointer changes, build commands, and
-observations from a fresh run and instruction-by-instruction GDB inspection.
+These are my explanations of the six programs in this folder. For each one,
+I followed the stack from `_start` until the program exited and recorded
+the register values and stack changes from GDB.
 
-| Source | Program README | Mode | Maximum additional stack use |
+| Program | My explanation | Mode | Most stack space used below the starting pointer |
 | --- | --- | --- | --- |
-| [01.asm](01.asm) | [Push and pop into different registers](01_README.md) | 64-bit | 16 bytes |
-| [02.asm](02.asm) | [A function with two local variables](02_README.md) | 64-bit | 32 bytes |
-| [03.asm](03.asm) | [The implicit stack operations of call and ret](03_README.md) | 64-bit | 8 bytes |
-| [04.asm](04.asm) | [A function with two local variables](04_README.md) | 32-bit | 16 bytes |
-| [05.asm](05.asm) | [Saving and restoring 64-bit registers](05_README.md) | 64-bit | 16 bytes |
-| [06.asm](06.asm) | [Saving and restoring 32-bit registers](06_README.md) | 32-bit | 8 bytes |
+| [01.asm](01.asm) | [01_README.md](01_README.md) | 64-bit | 16 bytes |
+| [02.asm](02.asm) | [02_README.md](02_README.md) | 64-bit | 32 bytes |
+| [03.asm](03.asm) | [03_README.md](03_README.md) | 64-bit | 8 bytes |
+| [04.asm](04.asm) | [04_README.md](04_README.md) | 32-bit | 16 bytes |
+| [05.asm](05.asm) | [05_README.md](05_README.md) | 64-bit | 16 bytes |
+| [06.asm](06.asm) | [06_README.md](06_README.md) | 32-bit | 8 bytes |
 
-## Reading the traces
+## What I noticed across the programs
 
-In every README, S means the stack pointer at the first instruction of
-`_start`. Linux has already placed the argument count, argument pointers,
-environment pointers, and auxiliary information on the process stack. It is not
-empty. `_start` is the executable entry point, rather than a function entered
-through `call`, so it has no caller return address to pop.
+I used S to stand for the stack pointer at the first instruction of `_start`.
+The actual address can change between runs, so S makes it easier to follow
+how far RSP or ESP moves. Linux has already put startup information on the
+stack before the program begins.
 
-These examples use a downward-growing stack. A register `push` first decreases
-the pointer and then stores a value; `pop` reads the current top and then
-increases the pointer. These programs use 8-byte stack entries in 64-bit mode
-and 4-byte entries in 32-bit mode. `call` also pushes a return address, and
-`ret` consumes it. Moving the pointer back does not erase the old memory.
+The stack grows towards lower addresses. A push moves the pointer down and
+stores a value. A pop reads the top value and moves the pointer back up.
+These examples use 8-byte entries in 64-bit mode and 4-byte entries in
+32-bit mode. The last value pushed is the first one popped.
 
-Maximum stack use in the table is measured below S and includes return
-addresses, saved frame pointers, and allocated local variables where present.
-It excludes the initial process data and any separate kernel stack activity.
+`call` also uses the stack by saving a return address, and `ret` removes
+that address to continue in the caller. In `02.asm` and `04.asm`, the stack
+also holds a saved frame pointer and two local variables.
+The space totals above include all of those entries, but not the startup
+information already on the stack.
 
-## Verification
+## How I ran the files
 
-All six source files were freshly assembled with NASM, linked with GNU ld,
-executed, and single-stepped with GDB on Linux. Every program produced empty
-stdout and stderr, exited with status 0, and restored `RSP` or `ESP` to S before
-its exit instruction. GDB confirmed maximum stack depths of 16, 32, 8, 16, 16,
-and 8 bytes respectively. The individual READMEs record the relevant register
-and memory observations. Absolute stack addresses vary between runs; offsets
-from S describe the same behavior.
+From the repository root, I first opened the stack folder:
 
-The pre-existing executables named `04` and `06` were ELF64 files despite their
-sources containing `BITS 32`. The checks above used fresh ELF32 builds of those
-two programs. `BITS 32` selects instruction encoding in NASM; it does not by
-itself make the linked executable a 32-bit process. Use `nasm -f elf32` with
-`ld -m elf_i386` for them. In particular, identical push/pop opcode bytes in an
-ELF64 executable can operate on 64-bit registers, so a successful exit alone
-does not establish that a 32-bit stack example was tested correctly.
+~~~sh
+cd 07_stack
+~~~
 
-Each README's build commands use a temporary directory. In GDB, `si` executes
-one machine instruction, including entering functions. When stopped at an
-instruction, that instruction has not executed yet. Inspect the stack at each
-`nop`, and check restored registers before the exit setup overwrites them.
+I assembled each `.asm` file with NASM, linked its `.o` file with `ld`,
+and ran the executable with `./01`, `./02`, and so on. Each program's
+README shows the exact commands I used to assemble, link, run, and
+open it in GDB.
+
+All six programs printed nothing, produced no error output, and exited
+with status 0. In each GDB trace, the stack pointer was back at S before
+the program exited. The individual READMEs contain the values I checked.
+
+For `04.asm` and `06.asm`, I used fresh ELF32 builds because the existing
+executables were ELF64. Writing `BITS 32` in the source does not by itself
+make the executable run in 32-bit mode. I used `nasm -f elf32` and
+`ld -m elf_i386` for those two files.

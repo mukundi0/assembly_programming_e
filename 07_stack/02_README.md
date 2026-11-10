@@ -1,77 +1,81 @@
-# 02.asm: a 64-bit function stack frame
+# 02.asm - Using the stack for local variables
 
-[Source: 02.asm](02.asm)
+[Source code](02.asm)
 
-This program calls `work`, creates a stack frame, stores two 8-byte local
-variables, loads them into registers, and removes the frame before returning.
+This program helped me follow how a function uses the stack for a return
+address, a saved register, and local variables. It runs in 64-bit mode and
+uses RSP as the stack pointer and RBP as a reference for the local variables.
 
-## Execution and stack changes
+## How the program runs
 
-Let S be `RSP` at `_start`. Linux has already prepared the initial process
-stack; `_start` itself has no caller return address. Let old RBP mean the value
-in RBP before `work` saves it. Its initial value is not needed by the program.
+I use S for RSP at the start of `_start`. Linux has already prepared the
+startup stack. `_start` was not entered through a `call`, so it does not have
+a caller's return address.
 
-| Instruction or stage | RSP after execution | Effect |
-| --- | --- | --- |
-| Enter `_start` | S | Initial process stack. |
-| `call work` | S - 8 | Push the address of `mov rax, 60` and jump to work. |
-| `push rbp` | S - 16 | Save old RBP below the return address. |
-| `mov rbp, rsp` | S - 16 | Set RBP to S - 16 as the frame's fixed reference. |
-| `sub rsp, 16` | S - 32 | Reserve 16 bytes for two local variables. |
-| Store and load the locals; `nop` | S - 32 | Access the reserved memory without moving RSP. |
-| `mov rsp, rbp` | S - 16 | Release both local-variable slots at once. |
-| `pop rbp` | S - 8 | Restore old RBP and leave the return address on top. |
-| `ret` | S | Consume the return address and resume `_start`. |
-| `mov rax, 60`; `xor rdi, rdi` | S | Prepare exit with status 0. |
-| `syscall` | S immediately before exit | Terminate the process. |
+The first instruction is `call work`. It pushes the address of the next
+instruction, `mov rax, 60`, onto the stack. This reduces RSP to S - 8 and
+then execution moves to `work`.
 
-`sub rsp, 16` only reserves space; it does not initialize it. The two stores
-then write `100` to `[rbp - 8]` and `200` to `[rbp - 16]`. The following loads
-set `RAX = 100` and `RBX = 200`. None of these memory `mov` instructions pushes
-or pops anything.
+Inside `work`, `push rbp` saves the old RBP and reduces RSP to S - 16.
+Then `mov rbp, rsp` sets RBP to that address. `sub rsp, 16` moves RSP down
+to S - 32, making room for two 8-byte local variables. This reserves space;
+it does not put any values there yet.
 
-At the `nop`, the complete frame is:
+The program stores 100 at `[rbp - 8]` and 200 at `[rbp - 16]`. It then reads
+them into RAX and RBX. These stores and loads do not change RSP. RBP stays
+fixed, so the same offsets can be used to find the variables.
+
+At the `nop`, the stack looks like this:
 
 ~~~text
-Address    Contents
-S - 32     200                  <- RSP, [RBP - 16]
-S - 24     100                     [RBP - 8]
-S - 16     Saved old RBP        <- RBP
-S - 8      Return address          [RBP + 8]
-S          Initial process data
+Address    Value
+S - 32     200                 <- RSP
+S - 24     100
+S - 16     Saved old RBP       <- RBP
+S - 8      Return address
+S          Startup information
 ~~~
 
-Maximum additional stack use is 32 bytes: 8 for the return address, 8 for
-saved RBP, and 16 for locals. The epilogue must discard the locals before
-popping RBP, or it would read local data as the saved frame pointer.
-`mov rsp, rbp` releases the local storage without erasing its contents.
-`ret` then removes the address pushed by `call`. Back in `_start`, RAX is
-overwritten with 60 for exit; 100 is a temporary calculation value, not the
-exit status. The exit system call does not pop another return address.
+To finish `work`, `mov rsp, rbp` moves RSP back to S - 16, releasing the
+space for both local variables. `pop rbp` restores the old RBP and moves
+RSP to S - 8. `ret` takes the return address off the stack and continues
+after the original call. RSP is now back to S.
 
-## Observations from running
+Back in `_start`, `mov rax, 60` and `xor rdi, rdi` prepare exit with status 0.
+`syscall` ends the program. The 100 in RAX is replaced by 60 for this call.
 
-The fresh ELF64 build produced no stdout or stderr and exited with status 0.
-At `work`'s `nop`, GDB showed `RAX = 100`, `RBX = 200`, and `RSP - S = -32`.
-Reading four 8-byte entries from RSP showed `200`, `100`, the saved RBP
-(0 in this run), and return address `0x401005`. After `ret`, RSP was S and RBP
-was restored. The return address identified the instruction immediately after
-`call work`.
+## What I observed
 
-## Build and inspect
+There was no output, and the program exited with status 0. At the `nop`,
+GDB showed RAX = 100, RBX = 200, and RSP = S - 32. Reading four 8-byte
+entries from RSP showed 200, 100, saved RBP, and the return address.
+In this run, saved RBP was 0 and the return address was `0x401005`.
+After `ret`, RSP was back to S and the old RBP had been restored.
 
-From the repository root:
+The program used 32 bytes below S: 8 for the return address, 8 for saved
+RBP, and 16 for the local variables. I can see why the locals must be
+released before `pop rbp`. Otherwise, the pop would read a local variable
+instead of the saved RBP. Releasing that space does not erase its contents.
+
+## How I ran the program
+
+From the `07_stack` folder, I assembled, linked, and ran the program with:
 
 ~~~sh
-stack_build=$(mktemp -d)
-nasm -f elf64 -g -F dwarf 07_stack/02.asm -o "$stack_build/02.o"
-ld -m elf_x86_64 "$stack_build/02.o" -o "$stack_build/02"
-"$stack_build/02"
+nasm -f elf64 02.asm -o 02.o
+ld 02.o -o 02
+./02
 echo $?  # 0
-gdb -q "$stack_build/02"
 ~~~
 
-Use `break _start`, `run`, and `set $initial_sp = $rsp`, then `si` through
-the call and frame setup. At the `nop`, inspect `info registers rsp rbp rax rbx`
-and `x/4gx $rsp`. Step through the epilogue and `ret`, then check
-`p/d (long)$rsp - (long)$initial_sp` before the exit setup; it should be 0.
+To inspect the stack, I opened the executable in GDB:
+
+~~~sh
+gdb -q 02
+~~~
+
+In GDB, I used `break _start`, `run`, and `si` to enter `work`.
+At the `nop`, `x/4gx $rsp` shows the whole frame and
+`info registers rsp rbp rax rbx` shows the pointers and loaded values.
+Stepping through the last three instructions in `work` shows the stack
+being restored.

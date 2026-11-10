@@ -1,85 +1,84 @@
-# 06.asm: saving and restoring 32-bit registers
+# 06.asm - Saving and restoring 32-bit values
 
-[Source: 06.asm](06.asm)
+[Source code](06.asm)
 
-This is the 32-bit counterpart of `05.asm`. It saves EAX and EBX on the stack,
-then restores EBX followed by EAX. The stack operations use 4-byte entries
-and update ESP.
+This program is similar to `05.asm`, but it uses EAX, EBX, and ESP in
+32-bit mode. I followed the same save-and-restore order, with each push
+or pop changing ESP by 4 bytes.
 
-## Execution and stack changes
+## How the program runs
 
-Let S be `ESP` at entry to `_start`. Linux has already placed startup data
-on the process stack. There is no caller return address for `_start` itself.
-This program uses temporary stack memory below S.
+I use S for ESP at the start of `_start`. The initial stack already contains
+startup information from Linux. The values saved by this program go below S.
 
-| Instruction or stage | ESP after execution | Effect |
-| --- | --- | --- |
-| Enter `_start` | S | Initial process stack. |
-| `mov eax, 0x11223344` | S | Load EAX; no stack access. |
-| `mov ebx, 0x1234` | S | Load EBX with `0x00001234`. |
-| `push eax` | S - 4 | Decrease ESP by 4 and store EAX at the new top. |
-| `push ebx` | S - 8 | Decrease ESP by 4 and store EBX above the earlier entry in stack order. |
-| `nop` | S - 8 | No change; both entries remain on the stack. |
-| `pop ebx` | S - 4 | Read `0x00001234` from the top and increase ESP by 4. |
-| `pop eax` | S | Read `0x11223344` and increase ESP by 4. |
-| `mov eax, 1` | S | Replace EAX with the 32-bit Linux exit-call number. |
-| `xor ebx, ebx` | S | Replace EBX with exit status 0. |
-| `int 0x80` | S immediately before exit | Terminate the process. |
+The first two instructions put `0x11223344` into EAX and `0x00001234` into EBX.
+They do not change ESP.
 
-At the `nop`, lower addresses contain the most recently pushed value:
+`push eax` subtracts 4 from ESP and stores EAX at the new top.
+`push ebx` subtracts another 4 and stores EBX. ESP is now S - 8.
+The `nop` makes no changes, so both entries can be inspected there.
 
 ~~~text
-Address    Contents
-S - 8      0x00001234           <- ESP, saved EBX
-S - 4      0x11223344              saved EAX
-S          Initial process data
+Address    Value
+S - 8      0x00001234          <- ESP, saved EBX
+S - 4      0x11223344             saved EAX
+S          Startup information
 ~~~
 
-Maximum additional stack use is 8 bytes, compared with 16 in the 64-bit
-example. Even though `0x1234` fits in 2 bytes, `push ebx` saves 4 bytes because
-EBX is a 32-bit operand. In little-endian byte order, the 8 bytes from ESP
-are `34 12 00 00 44 33 22 11`.
+`pop ebx` reads the most recently pushed value into EBX and adds 4 to ESP.
+Then `pop eax` reads the next value into EAX and adds another 4.
+ESP has returned to S.
 
-The last value pushed is the first value popped, so restoring EBX before EAX
-matches the save order. Neither register is modified between the pushes and
-pops; restoring them therefore leaves the same visible register values.
-The changing ESP and saved memory show the actual stack work. Pops release
-the slots without clearing their bytes.
+| Point in the program | ESP |
+| --- | --- |
+| At `_start` | S |
+| After `push eax` | S - 4 |
+| After `push ebx` | S - 8 |
+| After `pop ebx` | S - 4 |
+| After `pop eax` | S |
 
-The program creates no frame and calls no functions. After the pops, the exit
-setup intentionally replaces both restored values. `int 0x80` enters the
-kernel to exit; it does not use a user-space return address. Kernel entry
-bookkeeping is separate from this program's user stack.
+Finally, `mov eax, 1` replaces EAX with the 32-bit Linux exit-call number.
+`xor ebx, ebx` replaces EBX with exit status 0. `int 0x80` ends the program.
+The saved values have already been restored before those exit instructions
+overwrite them. There are no function calls or local-variable frames here.
 
-## Observations from running
+## What I observed
 
-The fresh ELF32 build printed nothing to stdout or stderr and exited with
-status 0. At the `nop`, GDB showed `ESP - S = -8` and the two 4-byte entries
-`0x00001234` and `0x11223344`. Immediately after the pops, ESP was S,
-`EBX = 0x1234`, and `EAX = 0x11223344`. Before exit, EAX was 1 and EBX was 0.
+The program printed nothing and exited with status 0. At the `nop`, GDB
+showed `0x00001234` and `0x11223344` in the two stack entries.
+After both pops, EBX was `0x1234`, EAX was `0x11223344`, and ESP was back to S.
+Before exit, EAX was 1 and EBX was 0.
 
-The pre-existing `07_stack/06` executable was ELF64. Its push/pop opcode bytes
-decode as 64-bit register operations in that mode, so even an apparently
-successful run would not establish the 4-byte ESP behavior described here.
-These observations come from the correct ELF32 build below. `BITS 32` must
-be paired with the appropriate assembler output format and linker mode.
+The most stack space used below S was 8 bytes, compared with 16 bytes in
+`05.asm`. `push ebx` uses 4 bytes even though `0x1234` fits in fewer bytes.
+The last value pushed comes out first. Neither register changes between its
+push and pop, so I used the stack entries and ESP changes to follow the work.
+A pop moves ESP up without clearing the old bytes in memory.
 
-## Build and inspect
+I checked a fresh ELF32 build because the existing executable was ELF64.
+In 64-bit mode, the same push/pop opcode bytes can operate on 64-bit registers.
+I used `nasm -f elf32` and `ld -m elf_i386` so the run would show the 4-byte
+ESP changes described here.
 
-From the repository root:
+## How I ran the program
+
+From the `07_stack` folder, I assembled, linked, and ran the program with:
 
 ~~~sh
-stack_build=$(mktemp -d)
-nasm -f elf32 -g -F dwarf 07_stack/06.asm -o "$stack_build/06.o"
-ld -m elf_i386 "$stack_build/06.o" -o "$stack_build/06"
-"$stack_build/06"
+nasm -f elf32 06.asm -o 06.o
+ld -m elf_i386 06.o -o 06
+./06
 echo $?  # 0
-gdb -q "$stack_build/06"
 ~~~
 
-The host needs support for running 32-bit x86 executables. Use `break _start`,
-`run`, `set $initial_sp = $esp`, and `si`. At the `nop`, use `x/2wx $esp`
-to inspect the saved values or `x/8bx $esp` to inspect their bytes.
-After both pops, stop before `mov eax, 1` and check
-`info registers esp eax ebx` and
-`p/d (long long)$esp - (long long)$initial_sp`.
+To inspect the stack, I opened the executable in GDB:
+
+~~~sh
+gdb -q 06
+~~~
+
+In GDB, I used `break _start`, `run`, and `si`.
+At the `nop`, `x/2wx $esp` shows both saved values.
+After the pops, I checked `info registers esp eax ebx` before
+`mov eax, 1` and `xor ebx, ebx` changed the registers for exit.
+The host needs support for running 32-bit x86 programs.
